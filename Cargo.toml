@@ -1,0 +1,21 @@
+[package]
+name = "rswifi"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+commty = "0.1"
+getset = "0.1"
+thiserror = "2"
+tokio = { version = "1.44", features = ["rt", ] }
+regex = "1"
+lazy_static = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.61", features = ["Win32_NetworkManagement_WiFi", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.29", features = ["fs", "socket"] }
+
+[dev-dependencies]
+anyhow = "1"
