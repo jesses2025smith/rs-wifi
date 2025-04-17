@@ -1,0 +1,40 @@
+name: Rust
+
+on:
+  push:
+    tags:
+      - "v*"
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  windows:
+    name: Check on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check code
+        run:  >
+          cargo check
+          # --verbose
+  linux:
+    name: Check on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check code
+        run:  >
+          cargo check
+          # --verbose
+  publish:
+    name: Publish to crates.io
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish
+        run: >
+          cargo publish
+          --verbose
+          --locked
+          --token ${{ secrets.CRATES_TOKEN }}
