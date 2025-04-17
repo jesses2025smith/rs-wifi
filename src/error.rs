@@ -1,17 +1,18 @@
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("IO error: {}", _0)]
-    IoError(Box<dyn std::error::Error + Send + Sync>),
-    #[error("Os error: {}", _0)]
-    OsError(Box<dyn std::error::Error + Send + Sync>),
+    #[error("IO error: {0:?}")]
+    IoError(std::io::Error),
+    #[error("Os error: {0}")]
+    OsError(String),
     #[error("{}", _0)]
     Other(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl From<std::io::Error> for Error {
+    #[inline]
     fn from(e: std::io::Error) -> Self {
-        Self::IoError(format!("{}", e).into())
+        Self::IoError(e)
     }
 }
 
@@ -19,7 +20,7 @@ impl From<std::io::Error> for Error {
 impl From<nix::errno::Errno> for Error {
     #[inline]
     fn from(e: nix::errno::Errno) -> Self {
-        Self::OsError(format!("{}", e).into())
+        Self::OsError(format!("{}", e))
     }
 }
 
@@ -27,7 +28,7 @@ impl From<nix::errno::Errno> for Error {
 impl From<std::ffi::OsString> for Error {
     #[inline]
     fn from(s: std::ffi::OsString) -> Self {
-        Self::OsError(format!("{:?}", s).into())
+        Self::OsError(format!("{:?}", s))
     }
 }
 
@@ -36,6 +37,6 @@ impl From<std::ffi::OsString> for Error {
 impl From<windows::core::Error> for Error {
     #[inline]
     fn from(e: windows::core::Error) -> Self {
-        Self::OsError(format!("{}", e).into())
+        Self::OsError(format!("{}", e))
     }
 }
