@@ -3,32 +3,29 @@ mod util;
 
 pub use interface::Interface;
 
-use std::collections::HashSet;
-use windows::{
-    core::{GUID, PCWSTR, PWSTR},
-    Win32::{Foundation::{LocalFree, ERROR_SUCCESS, HANDLE, HLOCAL}, NetworkManagement::WiFi::*},
-};
-use crate::{{AkmType, AuthAlg, IFaceStatus}, error::Error, profile::Profile, Result};
+use std::rc::Rc;
+use windows::Win32::{Foundation::HANDLE, NetworkManagement::WiFi::*};
+use crate::Result;
 
+#[derive(Debug, Clone)]
+pub(crate) struct Handle(HANDLE);
+
+impl Drop for Handle {
+    fn drop(&mut self) {
+        let ret = unsafe {
+            WlanCloseHandle(self.0, None)
+        };
+
+        if let Err(e) = util::fix_error(ret) {
+            rsutil::warn!("Failed to close handle: {}", e);
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct WifiUtil {
     // nego_ver: u32,
-    handle: HANDLE,
-}
-
-impl Drop for WifiUtil {
-    fn drop(&mut self) {
-        let ret = unsafe {
-            WlanCloseHandle(self.handle, None)
-        };
-
-        let _ = util::fix_error(ret)
-            .is_err_and(|e| {
-                rsutil::warn!("{}", e);
-                true
-            });
-    }
+    handle: Rc<Handle>,
 }
 
 impl WifiUtil {
@@ -38,6 +35,7 @@ impl WifiUtil {
 
         let ret = unsafe { WlanOpenHandle(util::wlan_api_ver()?, None, &mut nego_ver, &mut handle) };
         util::fix_error(ret)?;
+        let handle = Rc::new(Handle(handle));
 
         Ok(Self {
             // nego_ver,
@@ -47,7 +45,7 @@ impl WifiUtil {
 
     pub fn interfaces(&self) -> Result<Vec<Interface>> {
         let mut p_ifaces: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
-        let ret = unsafe { WlanEnumInterfaces(self.handle, None, &mut p_ifaces) };
+        let ret = unsafe { WlanEnumInterfaces(self.handle.0.to_owned(), None, &mut p_ifaces) };
         util::fix_error(ret)
             .map_err(|e| {
                 unsafe { WlanFreeMemory(p_ifaces as _) };
@@ -65,7 +63,17 @@ impl WifiUtil {
                 deref.dwNumberOfItems as _,
             )
         }
-            .to_vec();
+            .iter()
+            .map(|v| {
+                let name = util::width_slice_to_str(&v.strInterfaceDescription);
+                let guid = v.InterfaceGuid;
+                Interface {
+                    name,
+                    handle: self.handle.clone(),
+                    guid,
+                }
+            })
+            .collect::<Vec<_>>();
 
         unsafe { WlanFreeMemory(p_ifaces as _) };
 
@@ -77,23 +85,23 @@ impl WifiUtil {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CipherType, error::Error};
+    use crate::{error::Error, AkmType, AuthAlg, CipherType, IFaceStatus, Profile};
 
-    fn initialize() -> anyhow::Result<(WifiUtil, GUID)> {
+    fn initialize() -> anyhow::Result<Interface> {
         let util = WifiUtil::new()?;
         let iface = util.interfaces()?;
         let iface = iface.first()
             .ok_or(Error::Other("No iface found".into()))?;
 
-        Ok((util, iface.InterfaceGuid))
+        Ok(iface.clone())
     }
 
     #[test]
     fn test_scan() -> anyhow::Result<()> {
-        let (util, guid) = initialize()?;
-        util.scan(&guid)?;
+        let iface = initialize()?;
+        iface.scan()?;
         std::thread::sleep(std::time::Duration::from_secs(5));
-        let results = util.scan_results(&guid)?;
+        let results = iface.scan_results()?;
         rsutil::trace!("Scan results: {:?}", results);
 
         Ok(())
@@ -102,27 +110,23 @@ mod tests {
     #[test]
     #[ignore = "reason: a real ssid is required"]
     fn test_connect() -> anyhow::Result<()> {
-        let (util, guid) = initialize()?;
+        let iface = initialize()?;
 
-        util.disconnect(&guid)?;
+        iface.disconnect()?;
         std::thread::sleep(std::time::Duration::from_millis(200));
-        assert_eq!(util.status(&guid)?, IFaceStatus::Disconnected);
+        assert_eq!(iface.status()?, IFaceStatus::Disconnected);
 
-        util.connect(&guid, "TestSSID-5G")?;
+        iface.connect("TestSSID-5G")?;
         std::thread::sleep(std::time::Duration::from_millis(500));
-        assert_eq!(util.status(&guid)?, IFaceStatus::Connected);
+        assert_eq!(iface.status()?, IFaceStatus::Connected);
 
         Ok(())
     }
 
     #[test]
     fn test_add_profile() -> anyhow::Result<()> {
-        let util = WifiUtil::new()?;
-        let iface = util.interfaces()?;
-        let iface = iface.first()
-            .ok_or(Error::Other("No iface found".into()))?;
-        let guid = &iface.InterfaceGuid;
-        let before = util.network_profile_name_list(guid)?;
+        let iface = initialize()?;
+        let before = iface.network_profile_name_list()?;
         let ssid = "TestSSID";
         let key = "12345678";
         let mut profile = Profile::new(ssid)
@@ -130,11 +134,11 @@ mod tests {
             .with_auth(AuthAlg::Open)
             .with_cipher(CipherType::Ccmp);
         profile.add_akm(AkmType::Wpa2Psk);
-        util.add_network_profile(guid, &profile)?;
-        let after = util.network_profile_name_list(guid)?;
+        iface.add_network_profile(&profile)?;
+        let after = iface.network_profile_name_list()?;
         assert_eq!(before.len() + 1, after.len());
-        util.remove_network_profile(&*guid, &ssid)?;
-        let after = util.network_profile_name_list(guid)?;
+        iface.remove_network_profile(&ssid)?;
+        let after = iface.network_profile_name_list()?;
         assert_eq!(before.len(), after.len());
 
         Ok(())
@@ -143,9 +147,9 @@ mod tests {
     #[test]
     #[ignore = "reason: tested in [`test_add_profile`]"]
     fn test_profile_list() -> anyhow::Result<()> {
-        let (util, guid) = initialize()?;
+        let iface = initialize()?;
 
-        util.network_profile_name_list(&guid)?
+        iface.network_profile_name_list()?
             .iter()
             .enumerate()
             .for_each(|(i, profile)| {
@@ -157,8 +161,8 @@ mod tests {
 
     #[test]
     fn test_profiles() -> anyhow::Result<()> {
-        let (util, guid) = initialize()?;
-        let results = util.network_profiles(&guid)?;
+        let iface = initialize()?;
+        let results = iface.network_profiles()?;
         rsutil::trace!("Profiles: {:?}", results);
 
         Ok(())
@@ -167,10 +171,10 @@ mod tests {
     #[test]
     #[ignore = "reason: a real ssid is required and tested in [`test_add_profile`]"]
     fn test_remove_profile() -> anyhow::Result<()> {
-        let (util, guid) = initialize()?;
-        let before = util.network_profile_name_list(&guid)?;
-        util.remove_network_profile(&guid, "TestSSID-5G")?;
-        let after = util.network_profile_name_list(&guid)?;
+        let iface = initialize()?;
+        let before = iface.network_profile_name_list()?;
+        iface.remove_network_profile("TestSSID-5G")?;
+        let after = iface.network_profile_name_list()?;
         assert_eq!(before.len() - 1, after.len());
 
         Ok(())

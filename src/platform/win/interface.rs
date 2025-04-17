@@ -1,3 +1,4 @@
+use std::{collections::HashSet, rc::Rc};
 use windows::{
     core::{GUID, PCWSTR, PWSTR},
     Win32::{Foundation::{LocalFree, ERROR_SUCCESS, HANDLE, HLOCAL}, NetworkManagement::WiFi::*},
@@ -5,25 +6,26 @@ use windows::{
 use getset::Getters;
 
 use crate::{{AkmType, AuthAlg, IFaceStatus}, error::Error, profile::Profile, Result};
+use super::{util, Handle};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Getters)]
 pub struct Interface {
     #[getset(get = "pub")]
     pub(crate) name: String,
-    pub(crate) handle: HANDLE,
+    pub(crate) handle: Rc<Handle>,
     pub(crate) guid: GUID,
 }
 
 impl Interface {
     pub fn scan(&self) -> Result<()> {
-        let ret = unsafe { WlanScan(self.handle, &self.guid, None, None, None) };
+        let ret = unsafe { WlanScan(self.handle(), &self.guid, None, None, None) };
         util::fix_error(ret)
     }
 
     pub fn scan_results(&self) -> Result<HashSet<String>> {
         let mut p_networks: *mut WLAN_AVAILABLE_NETWORK_LIST = std::ptr::null_mut();
         let ret = unsafe {
-            WlanGetAvailableNetworkList(self.handle, &self.guid, 2, None, &mut p_networks)
+            WlanGetAvailableNetworkList(self.handle(), &self.guid, 2, None, &mut p_networks)
         };
 
         util::fix_error(ret)
@@ -95,15 +97,15 @@ impl Interface {
             dwFlags: 0,
         };
         let ret = unsafe {
-            WlanConnect(self.handle, &self.guid, &params, None)
+            WlanConnect(self.handle(), &self.guid, &params, None)
         };
 
-        util::fix_error(ret)
+        Ok(util::fix_error(ret).is_ok())
     }
 
     pub fn disconnect(&self) -> Result<()> {
         let ret = unsafe {
-            WlanDisconnect(self.handle, &self.guid, None)
+            WlanDisconnect(self.handle(), &self.guid, None)
         };
         util::fix_error(ret)
     }
@@ -117,7 +119,7 @@ impl Interface {
         let mut reason_code = 0;
         let ret = unsafe {
             WlanSetProfile(
-                self.handle,
+                self.handle(),
                 &self.guid,
                 2,
                 PCWSTR(xml.as_ptr()),
@@ -147,7 +149,7 @@ impl Interface {
     pub fn network_profile_name_list(&self) -> Result<Vec<String>> {
         let mut p_profiles: *mut WLAN_PROFILE_INFO_LIST = std::ptr::null_mut();
         let ret = unsafe {
-            WlanGetProfileList(self.handle, &self.guid, None, &mut p_profiles)
+            WlanGetProfileList(self.handle(), &self.guid, None, &mut p_profiles)
         };
 
         util::fix_error(ret)
@@ -190,7 +192,7 @@ impl Interface {
             let mut p_xml = PWSTR::default();
             let ret = unsafe {
                 WlanGetProfile(
-                    self.handle,
+                    self.handle(),
                     &self.guid,
                     PCWSTR::from_raw(name.as_ptr()),
                     None,
@@ -220,7 +222,7 @@ impl Interface {
             let mut profile = Profile::new(&ssid);
             if util::AUTH_LIST.contains(auth) {
                 if util::AUTH_LIST2.contains(auth) {
-                    profile.auth = AuthAlg::try_from(auth).unwrap();
+                    profile.auth = AuthAlg::try_from(auth)?;
                     profile.akm.push(AkmType::None);
                 }
                 else {
@@ -243,7 +245,7 @@ impl Interface {
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
         let ret = unsafe {
-            WlanDeleteProfile(self.handle, &self.guid, PCWSTR(name_wide.as_ptr()), None)
+            WlanDeleteProfile(self.handle(), &self.guid, PCWSTR(name_wide.as_ptr()), None)
         };
 
         util::fix_error(ret)
@@ -252,7 +254,7 @@ impl Interface {
     pub fn remove_all_network_profiles(&self) -> Result<()> {
         let profiles = self.network_profile_name_list()?;
         for p in profiles {
-            self.remove_network_profile(&self.guid, &p)?;
+            self.remove_network_profile( &p)?;
         }
 
         Ok(())
@@ -265,7 +267,7 @@ impl Interface {
 
         let ret = unsafe {
             WlanQueryInterface(
-                self.handle,
+                self.handle(),
                 &self.guid,
                 wlan_intf_opcode_interface_state,
                 None,
@@ -286,7 +288,7 @@ impl Interface {
         Ok(code.into())
     }
 
-    pub(crate) fn new() -> Result<Self> {
-
+    pub fn handle(&self) -> HANDLE {
+        self.handle.0.to_owned()
     }
 }
