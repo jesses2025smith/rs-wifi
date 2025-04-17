@@ -53,10 +53,12 @@ use crate::{AkmType, AuthAlg, CipherType};
 ///
 /// # Notes
 ///
-/// - The `to_xml` method includes a debug trace of the generated XML using [`commty::trace!`].
+/// - The `to_xml` method includes a debug trace of the generated XML using [`rsutil::trace!`].
 /// - The `shared_key` section is included only if the profile has a valid key and AKM type.
-#[derive(Debug, Default, Clone, CopyGetters, Getters, WithSetters)]
+#[derive(Debug, Default, Clone, Eq, CopyGetters, Getters, WithSetters)]
 pub struct Profile {
+    #[cfg(target_os = "linux")]
+    pub(crate) id: usize,
     #[getset(get_copy = "pub", set_with = "pub")]
     pub(crate) auth: AuthAlg,
     #[getset(get = "pub")]
@@ -69,6 +71,18 @@ pub struct Profile {
     pub(crate) bssid: Option<String>,
     #[getset(get = "pub", set_with = "pub")]
     pub(crate) key: Option<String>,
+}
+
+impl PartialEq for Profile {
+    fn eq(&self, other: &Self) -> bool {
+        self.ssid == other.ssid
+    }
+}
+
+impl std::hash::Hash for Profile {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.ssid.hash(state);
+    }
 }
 
 impl Profile {
@@ -85,6 +99,7 @@ impl Profile {
         self.akm.push(akm_type);
     }
 
+    #[cfg(target_os = "windows")]
     pub fn to_xml(&self) -> String {
         let profile_name = &self.ssid;
         let ssid = &self.ssid;
@@ -140,13 +155,14 @@ r#"<?xml version="1.0"?>
         <enableRandomization>false</enableRandomization>
     </MacRandomization>
 </WLANProfile>"#, );
-        commty::trace!("`{}`", xml);
+        rsutil::trace!("`{}`", xml);
 
         xml
     }
 }
 
 
+#[cfg(target_os = "windows")]
 #[cfg(test)]
 mod tests {
     use crate::{AkmType, AuthAlg, CipherType};
@@ -155,7 +171,7 @@ mod tests {
 
     #[test]
     fn test_to_xml() {
-        let expect = 
+        let expect =
 r#"<?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
     <name>TestSSID</name>
@@ -194,7 +210,7 @@ r#"<?xml version="1.0"?>
         profile.add_akm(AkmType::Wpa2Psk);
         assert_eq!(profile.to_xml(), expect);
 
-        let expect = 
+        let expect =
 r#"<?xml version="1.0"?>
 <WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
     <name>TestSSID</name>

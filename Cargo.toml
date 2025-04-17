@@ -1,14 +1,14 @@
 [package]
-name = "rswifi"
+name = "rs-wifi"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-commty = "0.1"
 getset = "0.1"
 thiserror = "2"
 tokio = { version = "1.44", features = ["rt", ] }
 regex = "1"
+rsutil = { version = "0.1", features = ["log"] }
 lazy_static = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
