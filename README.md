@@ -12,7 +12,7 @@ Cross-platform wireless network (WiFi) management
 To use `rswifi`, add it to your `Cargo.toml`:
 ```toml
 [dependencies]
-rswifi = "0.1"
+rs-wifi = "0.1"
 ```
 
 ## Usage
@@ -46,10 +46,10 @@ fn main() -> Result<()> {
     iface.scan()?;
     std::thread::sleep(std::time::Duration::from_secs(5));
     let results = iface.scan_results()?;
-    println!("{:?}", results);
+    assert!(results.contains(ssid));
 
     // Connect
-    let ret = iface.connect("TestSSID")?;
+    let ret = iface.connect(ssid)?;
     assert!(ret);
     std::thread::sleep(std::time::Duration::from_millis(500));
     let status = iface.status()?;
