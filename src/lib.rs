@@ -1,6 +1,6 @@
-pub mod error;
-pub mod platform;
-pub mod profile;
+mod error;
+mod platform;
+mod profile;
 
 pub use error::*;
 pub use platform::*;

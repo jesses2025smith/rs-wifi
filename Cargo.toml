@@ -2,11 +2,22 @@
 name = "rs-wifi"
 version = "0.1.0"
 edition = "2024"
+license = "Apache-2.0"
+authors = ["Jesse Smith <jesses2025smith@gmail.com>"]
+description = "`rswifi` is cross-platform wireless network (WiFi) management."
+homepage = "https://github.com/jesses2025smith/rs-wifi"
+repository = "https://github.com/jesses2025smith/rs-wifi"
+
+categories = ["accessibility", "hardware-support",]
+keywords = ["cross-platform", "wlan", "wifi", "wireless"]
+
+[lib]
+name = "rswifi"
+path = "src/lib.rs"
 
 [dependencies]
 getset = "0.1"
 thiserror = "2"
-tokio = { version = "1.44", features = ["rt", ] }
 regex = "1"
 rsutil = { version = "0.1", features = ["log"] }
 lazy_static = "1"
