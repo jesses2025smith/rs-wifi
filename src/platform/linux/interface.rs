@@ -1,4 +1,4 @@
-use std::{collections::HashSet, os::{fd::AsRawFd, unix::io::OwnedFd}, path::PathBuf};
+use std::{collections::HashSet, os::{fd::AsRawFd as _, unix::io::RawFd}, path::PathBuf};
 use getset::Getters;
 use nix::{sys::socket, unistd::close};
 
@@ -8,16 +8,16 @@ use super::util;
 const CTRL_IFACE_RETRY: usize = 3;
 const REPLY_SIZE: usize = 4096;
 
-#[derive(Debug, Getters)]
+#[derive(Debug, Clone, Getters)]
 pub struct Interface {
     #[getset(get = "pub")]
     pub(crate) name: String,
-    pub(crate) handle: OwnedFd,
+    pub(crate) handle: RawFd,
 }
 
 impl Drop for Interface {
     fn drop(&mut self) {
-        if let Err(e) = close(self.handle.as_raw_fd()) {
+        if let Err(e) = close(self.handle) {
             rsutil::error!("Failed to close socket: {}", e);
         }
         let sock_file = format!("/tmp/rswifi_{}.sock", self.name);
@@ -242,22 +242,23 @@ impl Interface {
             socket::SockType::Datagram,
             socket::SockFlag::empty(), None
         )
-            .map_err(Into::<Error>::into)?;
+            .map_err(Into::<Error>::into)?
+            .as_raw_fd();
         let addr = socket::UnixAddr::new(sock_file.as_str())
             .map_err(Into::<Error>::into)?;
-        socket::bind(sock.as_raw_fd(), &addr)
+        socket::bind(sock, &addr)
             .map_err(Into::<Error>::into)?;
         let addr = socket::UnixAddr::new(ctrl_iface.as_path())
             .map_err(Into::<Error>::into)?;
-        socket::connect(sock.as_raw_fd(), &addr)
+        socket::connect(sock, &addr)
             .map_err(Into::<Error>::into)?;
 
-        let len = socket::send(sock.as_raw_fd(), "PING".as_bytes(), socket::MsgFlags::empty())
+        let len = socket::send(sock, "PING".as_bytes(), socket::MsgFlags::empty())
             .map_err(Into::<Error>::into)?;
         rsutil::debug!("Sent `PING` returned: {}", len);
         for _ in 0..CTRL_IFACE_RETRY {
             let mut buffer = [0u8; REPLY_SIZE];
-            let reply = socket::recv(sock.as_raw_fd(), &mut buffer, socket::MsgFlags::empty())
+            let reply = socket::recv(sock, &mut buffer, socket::MsgFlags::empty())
                 .map_err(Into::<Error>::into)?;
             if reply == 0 {
                 rsutil::error!("Connection to {} is broken!", iface);
@@ -273,13 +274,11 @@ impl Interface {
             }
         }
 
-
         Ok(None)
     }
 
     fn _send_cmd_to_wpas(&self, cmd: &str, get_repy: bool) -> Result<Option<String>> {
-        let fd = self.handle.as_raw_fd();
-        let len = socket::send(fd, cmd.as_bytes(), socket::MsgFlags::empty())
+        let len = socket::send(self.handle, cmd.as_bytes(), socket::MsgFlags::empty())
             .map_err(Into::<Error>::into)?;
         if !cmd.contains("psk") {
             rsutil::debug!("Sending command: {} to wpa_s: {}", cmd, len);
@@ -289,7 +288,7 @@ impl Interface {
         }
 
         let mut buffer = [0u8; REPLY_SIZE];
-        let reply = socket::recv(fd, &mut buffer, socket::MsgFlags::empty())
+        let reply = socket::recv(self.handle, &mut buffer, socket::MsgFlags::empty())
             .map_err(Into::<Error>::into)?;
         let result = String::from_utf8_lossy(&buffer[..reply]);
         if get_repy {
@@ -316,7 +315,7 @@ mod tests {
             .unwrap();
         let result = iface.scan_results()?;
         println!("result: {:?}", result);
-        iface.connect("MuCapital-5G")?;
+        iface.connect("TestSSID")?;
 
         Ok(())
     }

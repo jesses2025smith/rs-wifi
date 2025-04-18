@@ -33,7 +33,6 @@ impl Interface {
                 unsafe { WlanFreeMemory(p_networks as _) };
                 e
             })?;
-
         if p_networks.is_null() {
             return Ok(Default::default());
         }
@@ -157,7 +156,6 @@ impl Interface {
                 unsafe { WlanFreeMemory(p_profiles as _) };
                 e
             })?;
-
         if p_profiles.is_null() {
             return Ok(Default::default());
         }
@@ -277,11 +275,11 @@ impl Interface {
             )
         };
         util::fix_error(ret)?;
-        assert_eq!(size, 4);
         if p_data.is_null() {
             return Ok(IFaceStatus::Unknown);
         }
 
+        assert_eq!(size, 4);
         let code = unsafe { *(p_data as *const u32) };
         unsafe { LocalFree(Some(HLOCAL(p_data as _))) };
 
