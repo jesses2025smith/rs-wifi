@@ -1,6 +1,6 @@
 [package]
 name = "rs-wifi"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "Apache-2.0"
 authors = ["Jesse Smith <jesses2025smith@gmail.com>"]
@@ -18,11 +18,11 @@ path = "src/lib.rs"
 [dependencies]
 getset = "0.1"
 thiserror = "2"
-regex = "1"
 rsutil = { version = "0.1", features = ["log"] }
 lazy_static = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+regex = "1"
 windows = { version = "0.61", features = ["Win32_NetworkManagement_WiFi", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
