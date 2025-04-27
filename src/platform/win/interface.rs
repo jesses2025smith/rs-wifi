@@ -5,7 +5,7 @@ use windows::{
 };
 use getset::Getters;
 
-use crate::{{AkmType, AuthAlg, IFaceStatus}, error::Error, profile::Profile, Result};
+use crate::{{AkmType, AuthAlg, IFaceStatus}, error::Error, platform::WiFiInterface, profile::Profile, Result, CipherType};
 use super::{util, Handle};
 
 #[derive(Debug, Clone, Getters)]
@@ -17,12 +17,19 @@ pub struct Interface {
 }
 
 impl Interface {
-    pub fn scan(&self) -> Result<()> {
+    #[inline]
+    fn handle(&self) -> HANDLE {
+        self.handle.0.to_owned()
+    }
+}
+
+impl WiFiInterface for Interface {
+    fn scan(&self) -> Result<()> {
         let ret = unsafe { WlanScan(self.handle(), &self.guid, None, None, None) };
         util::fix_error(ret)
     }
 
-    pub fn scan_results(&self) -> Result<HashSet<String>> {
+    fn scan_results(&self) -> Result<HashSet<Profile>> {
         let mut p_networks: *mut WLAN_AVAILABLE_NETWORK_LIST = std::ptr::null_mut();
         let ret = unsafe {
             WlanGetAvailableNetworkList(self.handle(), &self.guid, 2, None, &mut p_networks)
@@ -64,8 +71,41 @@ impl Interface {
                 rsutil::trace!();
                 match ssid.uSSIDLength {
                     0 => None,
-                    len => Some(String::from_utf8_lossy(&ssid.ucSSID[..len as _])
-                        .to_string())
+                    len => {
+                        let ssid = String::from_utf8_lossy(&ssid.ucSSID[..len as _]);
+                        let mut profile = Profile::new(ssid);
+
+                        if info.bSecurityEnabled.as_bool() {
+                            profile.auth = AuthAlg::Shared
+                        }
+
+                        let auth = info.dot11DefaultAuthAlgorithm;
+                        if matches!(auth, DOT11_AUTH_ALGO_RSNA | DOT11_AUTH_ALGO_RSNA_PSK) {
+                            profile.add_akm(AkmType::Wpa)
+                        }
+                        else if matches!(auth, DOT11_AUTH_ALGO_WPA | DOT11_AUTH_ALGO_WPA_NONE) {
+                            profile.add_akm(AkmType::WpaPsk)
+                        }
+                        else if matches!(auth, DOT11_AUTH_ALGO_WPA3 | DOT11_AUTH_ALGO_WPA3_ENT | DOT11_AUTH_ALGO_WPA3_ENT_192 | DOT11_AUTH_ALGO_WPA3_SAE) {
+                            profile.add_akm(AkmType::Wpa2)
+                        }
+                        else if matches!(auth, DOT11_AUTH_ALGO_WPA_PSK) {
+                            profile.add_akm(AkmType::Wpa2Psk)
+                        }
+
+                        let cipher = info.dot11DefaultCipherAlgorithm;
+                        if matches!(cipher, DOT11_CIPHER_ALGO_CCMP | DOT11_CIPHER_ALGO_CCMP_256 | DOT11_CIPHER_ALGO_GCMP | DOT11_CIPHER_ALGO_GCMP_256) {
+                            profile.cipher = CipherType::Ccmp
+                        }
+                        else if matches!(cipher, DOT11_CIPHER_ALGO_TKIP) {
+                            profile.cipher = CipherType::Tkip
+                        }
+                        else if matches!(cipher, DOT11_CIPHER_ALGO_WEP | DOT11_CIPHER_ALGO_WEP104 | DOT11_CIPHER_ALGO_WEP40) {
+                            profile.cipher = CipherType::Wep
+                        }
+
+                        Some(profile)
+                    }
                 }
             })
             .collect::<HashSet<_>>();
@@ -74,7 +114,7 @@ impl Interface {
         Ok(networks)
     }
 
-    pub fn connect(&self, ssid: &str) -> Result<bool> {
+    fn connect(&self, ssid: &str) -> Result<bool> {
         let ssid_wide = ssid.encode_utf16()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
@@ -102,14 +142,14 @@ impl Interface {
         Ok(util::fix_error(ret).is_ok())
     }
 
-    pub fn disconnect(&self) -> Result<()> {
+    fn disconnect(&self) -> Result<()> {
         let ret = unsafe {
             WlanDisconnect(self.handle(), &self.guid, None)
         };
         util::fix_error(ret)
     }
 
-    pub fn add_network_profile(&self, profile: &Profile) -> Result<()> {
+    fn add_network_profile(&self, profile: &Profile) -> Result<()> {
         let xml = profile.to_xml()
             .encode_utf16()
             .chain(std::iter::once(0))
@@ -145,7 +185,7 @@ impl Interface {
         Ok(())
     }
 
-    pub fn network_profile_name_list(&self) -> Result<Vec<String>> {
+    fn network_profile_name_list(&self) -> Result<Vec<String>> {
         let mut p_profiles: *mut WLAN_PROFILE_INFO_LIST = std::ptr::null_mut();
         let ret = unsafe {
             WlanGetProfileList(self.handle(), &self.guid, None, &mut p_profiles)
@@ -179,7 +219,7 @@ impl Interface {
         Ok(results)
     }
 
-    pub fn network_profiles(&self) -> Result<Vec<Profile>> {
+    fn network_profiles(&self) -> Result<Vec<Profile>> {
         let profiles = self.network_profile_name_list()?;
 
         let mut results = vec![];
@@ -217,7 +257,7 @@ impl Interface {
                 .ok_or(Error::Other("Can't match authentication".into()))?
                 .as_str();
 
-            let mut profile = Profile::new(&ssid);
+            let mut profile = Profile::new(ssid);
             if util::AUTH_LIST.contains(auth) {
                 if util::AUTH_LIST2.contains(auth) {
                     profile.auth = AuthAlg::try_from(auth)?;
@@ -238,7 +278,7 @@ impl Interface {
         Ok(results)
     }
 
-    pub fn remove_network_profile(&self, name: &str) -> Result<()> {
+    fn remove_network_profile(&self, name: &str) -> Result<()> {
         let name_wide = name.encode_utf16()
             .chain(std::iter::once(0))
             .collect::<Vec<_>>();
@@ -249,7 +289,7 @@ impl Interface {
         util::fix_error(ret)
     }
 
-    pub fn remove_all_network_profiles(&self) -> Result<()> {
+    fn remove_all_network_profiles(&self) -> Result<()> {
         let profiles = self.network_profile_name_list()?;
         for p in profiles {
             self.remove_network_profile( &p)?;
@@ -258,7 +298,7 @@ impl Interface {
         Ok(())
     }
 
-    pub fn status(&self) -> Result<IFaceStatus> {
+    fn status(&self) -> Result<IFaceStatus> {
         let mut size = 0;
         let mut p_data = std::ptr::null_mut();
         let mut opcode_val_type = WLAN_OPCODE_VALUE_TYPE::default();
@@ -284,9 +324,5 @@ impl Interface {
         unsafe { LocalFree(Some(HLOCAL(p_data as _))) };
 
         Ok(code.into())
-    }
-
-    pub fn handle(&self) -> HANDLE {
-        self.handle.0.to_owned()
     }
 }

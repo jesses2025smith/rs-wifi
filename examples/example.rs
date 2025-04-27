@@ -1,23 +1,3 @@
-# rswifi
-Cross-platform wireless network (WiFi) management
-
-## Features
-- Scan for available WiFi networks
-- Connect to a WiFi network
-- Disconnect from a WiFi network
-- Retrieve connection status
-- Cross-platform support (Windows, Linux)
-
-## Installation
-To use `rswifi`, add it to your `Cargo.toml`:
-```toml
-[dependencies]
-rs-wifi = "0.1"
-```
-
-## Usage
-Here is a basic example:
-```rust
 use rswifi::{AkmType, AuthAlg, CipherType, Error, IFaceStatus, Profile, Result, WiFiInterface as _, WifiUtil};
 
 fn main() -> Result<()> {
@@ -68,7 +48,4 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-```
 
-## License
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

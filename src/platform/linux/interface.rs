@@ -1,39 +1,129 @@
-use std::{collections::HashSet, os::{fd::AsRawFd as _, unix::io::RawFd}, path::PathBuf};
+use std::{collections::HashSet, rc::Rc, os::{fd::AsRawFd as _, unix::io::RawFd}, path::PathBuf};
 use getset::Getters;
 use nix::{sys::socket, unistd::close};
 
-use crate::{error::Error, AkmType, CipherType, IFaceStatus, Profile, Result};
+use crate::{error::Error, AkmType, CipherType, IFaceStatus, platform::WiFiInterface, profile::Profile, Result};
 use super::util;
 
 const CTRL_IFACE_RETRY: usize = 3;
 const REPLY_SIZE: usize = 4096;
 
-#[derive(Debug, Clone, Getters)]
-pub struct Interface {
-    #[getset(get = "pub")]
-    pub(crate) name: String,
-    pub(crate) handle: RawFd,
+#[inline]
+fn socket_file(iface: &str) -> String {
+    format!("/tmp/rswifi_{}.sock", iface)
 }
 
-impl Drop for Interface {
+#[derive(Debug, Clone)]
+struct Handle {
+    iface: String,
+    fd: RawFd,
+}
+
+impl Drop for Handle {
     fn drop(&mut self) {
-        if let Err(e) = close(self.handle) {
+        if let Err(e) = close(self.fd) {
             rsutil::error!("Failed to close socket: {}", e);
         }
-        let sock_file = format!("/tmp/rswifi_{}.sock", self.name);
+        let sock_file = socket_file(&self.iface);
         if let Err(e) = util::remove_file(&sock_file) {
             rsutil::error!("Failed to remove socket file {}: {}", sock_file, e);
         }
     }
 }
 
+#[derive(Debug, Clone, Getters)]
+pub struct Interface {
+    #[getset(get = "pub")]
+    pub(crate) name: String,
+    pub(crate) handle: Rc<Handle>,
+}
+
 impl Interface {
-    pub fn scan(&self) -> Result<()> {
+    pub(crate) fn new(ctrl_iface: PathBuf) -> Result<Option<Self>> {
+        let iface = ctrl_iface.file_name()
+            .ok_or(Error::Other(format!("{:?} is no filename", ctrl_iface).into()))?
+            .to_os_string()
+            .into_string()
+            .map_err(Into::<Error>::into)?;
+        let sock_file = socket_file(&iface);
+        util::remove_file(&sock_file)?;
+
+        let sock = socket::socket(
+            socket::AddressFamily::Unix,
+            socket::SockType::Datagram,
+            socket::SockFlag::empty(), None
+        )
+            .map_err(Into::<Error>::into)?
+            .as_raw_fd();
+        let addr = socket::UnixAddr::new(sock_file.as_str())
+            .map_err(Into::<Error>::into)?;
+        socket::bind(sock, &addr)
+            .map_err(Into::<Error>::into)?;
+        let addr = socket::UnixAddr::new(ctrl_iface.as_path())
+            .map_err(Into::<Error>::into)?;
+        socket::connect(sock, &addr)
+            .map_err(Into::<Error>::into)?;
+
+        let len = socket::send(sock, "PING".as_bytes(), socket::MsgFlags::empty())
+            .map_err(Into::<Error>::into)?;
+        rsutil::debug!("Sent `PING` returned: {}", len);
+        for _ in 0..CTRL_IFACE_RETRY {
+            let mut buffer = [0u8; REPLY_SIZE];
+            let reply = socket::recv(sock, &mut buffer, socket::MsgFlags::empty())
+                .map_err(Into::<Error>::into)?;
+            if reply == 0 {
+                rsutil::error!("Connection to {} is broken!", iface);
+                break
+            }
+
+            if String::from_utf8_lossy(&buffer[..reply]).starts_with("PONG") {
+                rsutil::info!("Connection to socket {} successfully!", iface);
+                return Ok(Some(Self {
+                    name: iface.clone(),
+                    handle: Rc::new(Handle {
+                        iface,
+                        fd: sock,
+                    }),
+                }));
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn _send_cmd_to_wpas(&self, cmd: &str, get_repy: bool) -> Result<Option<String>> {
+        let len = socket::send(self.handle.fd, cmd.as_bytes(), socket::MsgFlags::empty())
+            .map_err(Into::<Error>::into)?;
+        if !cmd.contains("psk") {
+            rsutil::debug!("Sending command: {} to wpa_s: {}", cmd, len);
+        }
+        if len == 0 {
+            return Err(Error::Other(format!("Failed to send command: {}", cmd).into()));
+        }
+
+        let mut buffer = [0u8; REPLY_SIZE];
+        let reply = socket::recv(self.handle.fd, &mut buffer, socket::MsgFlags::empty())
+            .map_err(Into::<Error>::into)?;
+        let result = String::from_utf8_lossy(&buffer[..reply]);
+        if get_repy {
+            return Ok(Some(result.to_string()));
+        }
+
+        if !result.eq_ignore_ascii_case("Ok\n") {
+            rsutil::error!("Unexpected resp '{}' for Command '{}'", result, cmd);
+        }
+
+        Ok(None)
+    }
+}
+
+impl WiFiInterface for Interface {
+    fn scan(&self) -> Result<()> {
         let _ = self._send_cmd_to_wpas("SCAN", false)?;
         Ok(())
     }
 
-    pub fn scan_results(&self) -> Result<HashSet<Profile>> {
+    fn scan_results(&self) -> Result<HashSet<Profile>> {
         let reply = self._send_cmd_to_wpas("SCAN_RESULTS", true)?
             .unwrap();
 
@@ -66,7 +156,7 @@ impl Interface {
             .collect::<HashSet<_>>())
     }
 
-    pub fn connect(&self, ssid: &str) -> Result<bool> {
+    fn connect(&self, ssid: &str) -> Result<bool> {
         rsutil::debug!("Connecting to network: {}", ssid);
         let mut flag = false;
         for (i, s) in self.network_profile_name_list()?
@@ -88,25 +178,12 @@ impl Interface {
         Ok(flag)
     }
 
-    pub fn disconnect(&self) -> Result<()> {
+    fn disconnect(&self) -> Result<()> {
         self._send_cmd_to_wpas("DISCONNECT", false)?;
         Ok(())
     }
 
-    pub fn network_profile_name_list(&self) -> Result<Vec<String>> {
-        let reply = self._send_cmd_to_wpas("LIST_NETWORKS", true)?.unwrap();
-        Ok(reply.lines()
-            .skip(1)
-            .filter_map(|line| {
-                let ssid = line.split_whitespace()
-                    .skip(1)
-                    .nth(1)?;
-                Some(ssid.into())
-            })
-            .collect())
-    }
-
-    pub fn add_network_profile(&self, profile: &Profile) -> Result<()> {
+    fn add_network_profile(&self, profile: &Profile) -> Result<()> {
         let reply = self._send_cmd_to_wpas("ADD_NETWORK", true)?.unwrap();
         let id = reply.trim();
 
@@ -133,7 +210,20 @@ impl Interface {
         Ok(())
     }
 
-    pub fn network_profiles(&self) -> Result<Vec<Profile>> {
+    fn network_profile_name_list(&self) -> Result<Vec<String>> {
+        let reply = self._send_cmd_to_wpas("LIST_NETWORKS", true)?.unwrap();
+        Ok(reply.lines()
+            .skip(1)
+            .filter_map(|line| {
+                let ssid = line.split_whitespace()
+                    .skip(1)
+                    .nth(1)?;
+                Some(ssid.into())
+            })
+            .collect())
+    }
+
+    fn network_profiles(&self) -> Result<Vec<Profile>> {
         let len = self.network_profile_name_list()?.len();
 
         let mut results = vec![];
@@ -195,7 +285,7 @@ impl Interface {
         Ok(results)
     }
 
-    pub fn remove_network_profile(&self, name: &str) -> Result<()> {
+    fn remove_network_profile(&self, name: &str) -> Result<()> {
         let profiles = self.network_profiles()?;
         for p in profiles {
             if p.ssid == name {
@@ -207,12 +297,12 @@ impl Interface {
         Ok(())
     }
 
-    pub fn remove_all_network_profiles(&self) -> Result<()> {
+    fn remove_all_network_profiles(&self) -> Result<()> {
         let _ = self._send_cmd_to_wpas("REMOVE_NETWORK all", false)?;
         Ok(())
     }
 
-    pub fn status(&self) -> Result<IFaceStatus> {
+    fn status(&self) -> Result<IFaceStatus> {
         let reply = self._send_cmd_to_wpas("STATUS", true)?.unwrap();
         let mut status = IFaceStatus::Unknown;
         for line in reply.lines() {
@@ -227,86 +317,12 @@ impl Interface {
 
         Ok(status)
     }
-
-    pub(crate) fn new(ctrl_iface: PathBuf) -> Result<Option<Self>> {
-        let iface = ctrl_iface.file_name()
-            .ok_or(Error::Other(format!("{:?} is no filename", ctrl_iface).into()))?
-            .to_os_string()
-            .into_string()
-            .map_err(Into::<Error>::into)?;
-        let sock_file = format!("/tmp/rswifi_{}.sock", iface);
-        util::remove_file(&sock_file)?;
-
-        let sock = socket::socket(
-            socket::AddressFamily::Unix,
-            socket::SockType::Datagram,
-            socket::SockFlag::empty(), None
-        )
-            .map_err(Into::<Error>::into)?
-            .as_raw_fd();
-        let addr = socket::UnixAddr::new(sock_file.as_str())
-            .map_err(Into::<Error>::into)?;
-        socket::bind(sock, &addr)
-            .map_err(Into::<Error>::into)?;
-        let addr = socket::UnixAddr::new(ctrl_iface.as_path())
-            .map_err(Into::<Error>::into)?;
-        socket::connect(sock, &addr)
-            .map_err(Into::<Error>::into)?;
-
-        let len = socket::send(sock, "PING".as_bytes(), socket::MsgFlags::empty())
-            .map_err(Into::<Error>::into)?;
-        rsutil::debug!("Sent `PING` returned: {}", len);
-        for _ in 0..CTRL_IFACE_RETRY {
-            let mut buffer = [0u8; REPLY_SIZE];
-            let reply = socket::recv(sock, &mut buffer, socket::MsgFlags::empty())
-                .map_err(Into::<Error>::into)?;
-            if reply == 0 {
-                rsutil::error!("Connection to {} is broken!", iface);
-                break
-            }
-
-            if String::from_utf8_lossy(&buffer[..reply]).starts_with("PONG") {
-                rsutil::info!("Connection to socket {} successfully!", iface);
-                return Ok(Some(Self {
-                    name: iface,
-                    handle: sock,
-                }));
-            }
-        }
-
-        Ok(None)
-    }
-
-    fn _send_cmd_to_wpas(&self, cmd: &str, get_repy: bool) -> Result<Option<String>> {
-        let len = socket::send(self.handle, cmd.as_bytes(), socket::MsgFlags::empty())
-            .map_err(Into::<Error>::into)?;
-        if !cmd.contains("psk") {
-            rsutil::debug!("Sending command: {} to wpa_s: {}", cmd, len);
-        }
-        if len == 0 {
-            return Err(Error::Other(format!("Failed to send command: {}", cmd).into()));
-        }
-
-        let mut buffer = [0u8; REPLY_SIZE];
-        let reply = socket::recv(self.handle, &mut buffer, socket::MsgFlags::empty())
-            .map_err(Into::<Error>::into)?;
-        let result = String::from_utf8_lossy(&buffer[..reply]);
-        if get_repy {
-            return Ok(Some(result.to_string()));
-        }
-
-        if !result.eq_ignore_ascii_case("Ok\n") {
-            rsutil::error!("Unexpected resp '{}' for Command '{}'", result, cmd);
-        }
-
-        Ok(None)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
-
+    use crate::WiFiInterface;
     use super::Interface;
 
     #[test]
