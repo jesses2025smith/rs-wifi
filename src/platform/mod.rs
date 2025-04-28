@@ -10,3 +10,19 @@ pub use win::*;
 mod osx;
 #[cfg(target_os = "macos")]
 pub use osx::*;
+
+use std::collections::HashSet;
+use crate::{IFaceStatus, Profile, Result};
+
+pub trait WiFiInterface {
+    fn scan(&self) -> Result<()>;
+    fn scan_results(&self) -> Result<HashSet<Profile>>;
+    fn connect(&self, ssid: &str) -> Result<bool>;
+    fn disconnect(&self) -> Result<()>;
+    fn add_network_profile(&self, profile: &Profile) -> Result<()>;
+    fn network_profile_name_list(&self) -> Result<Vec<String>>;
+    fn network_profiles(&self) -> Result<Vec<Profile>>;
+    fn remove_network_profile(&self, name: &str) -> Result<()>;
+    fn remove_all_network_profiles(&self) -> Result<()>;
+    fn status(&self) -> Result<IFaceStatus>;
+}

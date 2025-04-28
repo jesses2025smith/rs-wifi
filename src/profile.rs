@@ -87,7 +87,7 @@ impl std::hash::Hash for Profile {
 
 impl Profile {
     #[inline]
-    pub fn new(ssid: &str) -> Self {
+    pub fn new<T: Into<String>>(ssid: T) -> Self {
         Self {
             ssid: ssid.into(),
             akm: vec![AkmType::None, ],
