@@ -26,7 +26,7 @@ regex = "1"
 windows = { version = "0.61", features = ["Win32_NetworkManagement_WiFi", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nix = { version = "0.29", features = ["fs", "socket"] }
+nix = { version = "0.30", features = ["fs", "socket"] }
 
 [dev-dependencies]
 anyhow = "1"
