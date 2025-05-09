@@ -54,21 +54,21 @@ impl WiFiInterface for Interface {
             .iter()
             .filter_map(|info| {
                 let ssid = &info.dot11Ssid;
-                rsutil::trace!("{:?}", ssid);
-                rsutil::trace!("strProfileName: {:?}", util::width_slice_to_str(&info.strProfileName));
-                rsutil::trace!("dot11BssType: {}", info.dot11BssType.0);
-                rsutil::trace!("uNumberOfBssids: {}", info.uNumberOfBssids);
-                rsutil::trace!("bNetworkConnectable: {}", info.bNetworkConnectable.as_bool());
-                rsutil::trace!("wlanNotConnectableReason: {}", info.wlanNotConnectableReason);
-                rsutil::trace!("uNumberOfPhyTypes: {}", info.uNumberOfPhyTypes);
-                rsutil::trace!("dot11PhyTypes: {:?}", info.dot11PhyTypes);
-                rsutil::trace!("bMorePhyTypes: {}", info.bMorePhyTypes.as_bool());
-                rsutil::trace!("wlanSignalQuality: {}", info.wlanSignalQuality);
-                rsutil::trace!("bSecurityEnabled: {}", info.bSecurityEnabled.as_bool());
-                rsutil::trace!("dot11DefaultAuthAlgorithm: {}", info.dot11DefaultAuthAlgorithm.0);
-                rsutil::trace!("dot11DefaultCipherAlgorithm: {}", info.dot11DefaultCipherAlgorithm.0);
-                rsutil::trace!("dwFlags: {}", info.dwFlags);
-                rsutil::trace!();
+                // rsutil::trace!("{:?}", ssid);
+                // rsutil::trace!("strProfileName: {:?}", util::width_slice_to_str(&info.strProfileName));
+                // rsutil::trace!("dot11BssType: {}", info.dot11BssType.0);
+                // rsutil::trace!("uNumberOfBssids: {}", info.uNumberOfBssids);
+                // rsutil::trace!("bNetworkConnectable: {}", info.bNetworkConnectable.as_bool());
+                // rsutil::trace!("wlanNotConnectableReason: {}", info.wlanNotConnectableReason);
+                // rsutil::trace!("uNumberOfPhyTypes: {}", info.uNumberOfPhyTypes);
+                // rsutil::trace!("dot11PhyTypes: {:?}", info.dot11PhyTypes);
+                // rsutil::trace!("bMorePhyTypes: {}", info.bMorePhyTypes.as_bool());
+                // rsutil::trace!("wlanSignalQuality: {}", info.wlanSignalQuality);
+                // rsutil::trace!("bSecurityEnabled: {}", info.bSecurityEnabled.as_bool());
+                // rsutil::trace!("dot11DefaultAuthAlgorithm: {}", info.dot11DefaultAuthAlgorithm.0);
+                // rsutil::trace!("dot11DefaultCipherAlgorithm: {}", info.dot11DefaultCipherAlgorithm.0);
+                // rsutil::trace!("dwFlags: {}", info.dwFlags);
+                // rsutil::trace!("");
                 match ssid.uSSIDLength {
                     0 => None,
                     len => {
