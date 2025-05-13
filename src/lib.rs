@@ -45,3 +45,21 @@ pub enum CipherType {
     Ccmp,
     Unknown,
 }
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum ConnectMode {
+    Manual,
+    #[default]
+    Auto,
+}
+
+#[cfg(target_os = "windows")]
+impl std::fmt::Display for ConnectMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectMode::Manual => write!(f, "manual"),
+            ConnectMode::Auto => write!(f, "auto"),
+        }
+    }
+}
