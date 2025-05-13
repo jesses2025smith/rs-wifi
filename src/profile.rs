@@ -71,6 +71,9 @@ pub struct Profile {
     pub(crate) bssid: Option<String>,
     #[getset(get = "pub", set_with = "pub")]
     pub(crate) key: Option<String>,
+    #[cfg(target_os = "windows")]
+    #[getset(get = "pub", set_with = "pub")]
+    pub(crate) mode: crate::ConnectMode,
 }
 
 impl PartialEq for Profile {
@@ -103,6 +106,7 @@ impl Profile {
     pub fn to_xml(&self) -> String {
         let profile_name = &self.ssid;
         let ssid = &self.ssid;
+        let mode = self.mode.to_string();
         let flag = match self.akm.len() {
             0 | 1 => true,
             _ => self.akm.last().map(|&v| v == AkmType::None).unwrap_or_default()
@@ -141,7 +145,7 @@ r#"<?xml version="1.0"?>
         </SSID>
     </SSIDConfig>
     <connectionType>ESS</connectionType>
-    <connectionMode>manual</connectionMode>
+    <connectionMode>{mode}</connectionMode>
     <MSM>
         <security>
             <authEncryption>
@@ -165,7 +169,7 @@ r#"<?xml version="1.0"?>
 #[cfg(target_os = "windows")]
 #[cfg(test)]
 mod tests {
-    use crate::{AkmType, AuthAlg, CipherType};
+    use crate::{AkmType, AuthAlg, CipherType, ConnectMode};
 
     use super::Profile;
 
@@ -204,6 +208,7 @@ r#"<?xml version="1.0"?>
         let ssid = "TestSSID";
         let key = "12345678";
         let mut profile = Profile::new(ssid)
+            .with_mode(ConnectMode::Manual)
             .with_key(Some(key.into()))
             .with_auth(AuthAlg::Open)
             .with_cipher(CipherType::Ccmp);

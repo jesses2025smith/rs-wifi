@@ -16,6 +16,9 @@ pub struct Interface {
     pub(crate) guid: GUID,
 }
 
+unsafe impl Sync for Interface {}
+unsafe impl Send for Interface {}
+
 impl Interface {
     #[inline]
     fn handle(&self) -> HANDLE {

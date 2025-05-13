@@ -85,7 +85,7 @@ impl WifiUtil {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{error::Error, AkmType, AuthAlg, CipherType, IFaceStatus, Profile};
+    use crate::{error::Error, AkmType, AuthAlg, CipherType, IFaceStatus, Profile, WiFiInterface as _};
 
     fn initialize() -> anyhow::Result<Interface> {
         let util = WifiUtil::new()?;

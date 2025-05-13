@@ -38,6 +38,9 @@ pub struct Interface {
     pub(crate) handle: Rc<Handle>,
 }
 
+unsafe impl Sync for crate::Interface {}
+unsafe impl Send for crate::Interface {}
+
 impl Interface {
     pub(crate) fn new(ctrl_iface: PathBuf) -> Result<Option<Self>> {
         let iface = ctrl_iface.file_name()
