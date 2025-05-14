@@ -1,35 +1,12 @@
-use std::{collections::HashSet, rc::Rc, os::{fd::AsRawFd as _, unix::io::RawFd}, path::PathBuf};
+use std::{collections::HashSet, rc::Rc, os::fd::AsRawFd as _, path::PathBuf};
 use getset::Getters;
-use nix::{sys::socket, unistd::close};
+use nix::sys::socket;
 
 use crate::{error::Error, AkmType, CipherType, IFaceStatus, platform::WiFiInterface, profile::Profile, Result};
-use super::util;
+use super::{util, Handle};
 
 const CTRL_IFACE_RETRY: usize = 3;
 const REPLY_SIZE: usize = 4096;
-
-#[inline]
-fn socket_file(iface: &str) -> String {
-    format!("/tmp/rswifi_{}.sock", iface)
-}
-
-#[derive(Debug, Clone)]
-struct Handle {
-    iface: String,
-    fd: RawFd,
-}
-
-impl Drop for Handle {
-    fn drop(&mut self) {
-        if let Err(e) = close(self.fd) {
-            rsutil::error!("Failed to close socket: {}", e);
-        }
-        let sock_file = socket_file(&self.iface);
-        if let Err(e) = util::remove_file(&sock_file) {
-            rsutil::error!("Failed to remove socket file {}: {}", sock_file, e);
-        }
-    }
-}
 
 #[derive(Debug, Clone, Getters)]
 pub struct Interface {
@@ -38,8 +15,8 @@ pub struct Interface {
     pub(crate) handle: Rc<Handle>,
 }
 
-unsafe impl Sync for crate::Interface {}
-unsafe impl Send for crate::Interface {}
+unsafe impl Sync for Interface {}
+unsafe impl Send for Interface {}
 
 impl Interface {
     pub(crate) fn new(ctrl_iface: PathBuf) -> Result<Option<Self>> {
