@@ -1,4 +1,4 @@
-use std::{collections::HashSet, rc::Rc, os::fd::AsRawFd as _, path::PathBuf};
+use std::{collections::HashSet, os::fd::AsRawFd as _, asyn::Arc, path::PathBuf};
 use getset::Getters;
 use nix::sys::socket;
 
@@ -12,7 +12,7 @@ const REPLY_SIZE: usize = 4096;
 pub struct Interface {
     #[getset(get = "pub")]
     pub(crate) name: String,
-    pub(crate) handle: Rc<Handle>,
+    pub(crate) handle: Arc<Handle>,
 }
 
 unsafe impl Sync for Interface {}
@@ -60,7 +60,7 @@ impl Interface {
                 rsutil::info!("Connection to socket {} successfully!", iface);
                 return Ok(Some(Self {
                     name: iface.clone(),
-                    handle: Rc::new(Handle {
+                    handle: Arc::new(Handle {
                         iface,
                         fd: sock,
                     }),

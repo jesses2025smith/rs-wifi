@@ -1,4 +1,4 @@
-use std::{collections::HashSet, rc::Rc};
+use std::{collections::HashSet, sync::Arc};
 use windows::{
     core::{GUID, PCWSTR, PWSTR},
     Win32::{Foundation::{LocalFree, ERROR_SUCCESS, HANDLE, HLOCAL}, NetworkManagement::WiFi::*},
@@ -12,7 +12,7 @@ use super::{util, Handle};
 pub struct Interface {
     #[getset(get = "pub")]
     pub(crate) name: String,
-    pub(crate) handle: Rc<Handle>,
+    pub(crate) handle: Arc<Handle>,
     pub(crate) guid: GUID,
 }
 
@@ -89,7 +89,7 @@ impl WiFiInterface for Interface {
                         else if matches!(auth, DOT11_AUTH_ALGO_WPA | DOT11_AUTH_ALGO_WPA_NONE) {
                             profile.add_akm(AkmType::WpaPsk)
                         }
-                        else if matches!(auth, DOT11_AUTH_ALGO_WPA3 | DOT11_AUTH_ALGO_WPA3_ENT | DOT11_AUTH_ALGO_WPA3_ENT_192 | DOT11_AUTH_ALGO_WPA3_SAE) {
+                        else if matches!(auth, DOT11_AUTH_ALGO_WPA3 | DOT11_AUTH_ALGO_WPA3_ENT | DOT11_AUTH_ALGO_WPA3_SAE) {
                             profile.add_akm(AkmType::Wpa2)
                         }
                         else if matches!(auth, DOT11_AUTH_ALGO_WPA_PSK) {
