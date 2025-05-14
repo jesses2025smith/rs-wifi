@@ -9,6 +9,11 @@ use crate::{error::Error, Result};
 
 const CTRL_IFACE_DIR: &str = "/var/run/wpa_supplicant";
 
+#[inline(always)]
+pub(crate) fn socket_file(iface: &str) -> String {
+    format!("/tmp/rswifi_{}.sock", iface)
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct Handle {
     iface: String,
@@ -23,7 +28,7 @@ impl Drop for Handle {
         if let Err(e) = close(self.fd) {
             rsutil::error!("Failed to close socket: {}", e);
         }
-        let sock_file = format!("/tmp/rswifi_{}.sock", self.iface);
+        let sock_file = socket_file(&self.iface);
         if let Err(e) = util::remove_file(&sock_file) {
             rsutil::error!("Failed to remove socket file {}: {}", sock_file, e);
         }

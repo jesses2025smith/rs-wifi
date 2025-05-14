@@ -3,7 +3,7 @@ use getset::Getters;
 use nix::sys::socket;
 
 use crate::{error::Error, AkmType, CipherType, IFaceStatus, platform::WiFiInterface, profile::Profile, Result};
-use super::{util, Handle};
+use super::{util, Handle, socket_file};
 
 const CTRL_IFACE_RETRY: usize = 3;
 const REPLY_SIZE: usize = 4096;
