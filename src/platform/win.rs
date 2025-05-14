@@ -22,6 +22,9 @@ impl Drop for Handle {
     }
 }
 
+unsafe impl Sync for Handle {}
+unsafe impl Send for Handle {}
+
 #[derive(Debug)]
 pub struct WifiUtil {
     // nego_ver: u32,
