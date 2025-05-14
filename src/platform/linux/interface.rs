@@ -1,4 +1,4 @@
-use std::{collections::HashSet, os::fd::AsRawFd as _, asyn::Arc, path::PathBuf};
+use std::{collections::HashSet, os::fd::AsRawFd as _, sync::Arc, path::PathBuf};
 use getset::Getters;
 use nix::sys::socket;
 
