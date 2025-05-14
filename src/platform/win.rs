@@ -3,7 +3,7 @@ mod util;
 
 pub use interface::Interface;
 
-use std::rc::Rc;
+use std::sync::Arc;
 use windows::Win32::{Foundation::HANDLE, NetworkManagement::WiFi::*};
 use crate::Result;
 
@@ -28,7 +28,7 @@ unsafe impl Send for Handle {}
 #[derive(Debug)]
 pub struct WifiUtil {
     // nego_ver: u32,
-    handle: Rc<Handle>,
+    handle: Arc<Handle>,
 }
 
 impl WifiUtil {
@@ -38,7 +38,7 @@ impl WifiUtil {
 
         let ret = unsafe { WlanOpenHandle(util::wlan_api_ver()?, None, &mut nego_ver, &mut handle) };
         util::fix_error(ret)?;
-        let handle = Rc::new(Handle(handle));
+        let handle = Arc::new(Handle(handle));
 
         Ok(Self {
             // nego_ver,
