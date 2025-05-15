@@ -13,18 +13,28 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check code
+      - name: Check debug code
         run:  >
           cargo check
+          # --verbose
+      - name: Check release code
+        run:  >
+          cargo check
+          --release
           # --verbose
   linux:
     name: Check on Linux
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Check code
+      - name: Check debug code
         run:  >
           cargo check
+          # --verbose
+      - name: Check release code
+        run:  >
+          cargo check
+          --release
           # --verbose
   publish:
     name: Publish to crates.io
