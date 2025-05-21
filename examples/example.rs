@@ -1,9 +1,12 @@
-use rswifi::{AkmType, AuthAlg, CipherType, Error, IFaceStatus, Profile, Result, WiFiInterface as _, WifiUtil};
+use rswifi::{
+    AkmType, AuthAlg, CipherType, Error, IFaceStatus, Profile, Result, WiFiInterface as _, WifiUtil,
+};
 
 fn main() -> Result<()> {
     let util = WifiUtil::new()?;
     let ifaces = util.interfaces()?;
-    let iface = ifaces.first()
+    let iface = ifaces
+        .first()
         .ok_or(Error::Other("No iface found".into()))?;
 
     // Disconnect
@@ -48,4 +51,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-

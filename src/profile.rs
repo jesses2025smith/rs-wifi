@@ -1,6 +1,5 @@
-use getset::{CopyGetters, Getters, WithSetters};
 use crate::{AkmType, AuthAlg, CipherType};
-
+use getset::{CopyGetters, Getters, WithSetters};
 
 /// Represents a wireless network profile with associated configuration and methods.
 ///
@@ -93,7 +92,7 @@ impl Profile {
     pub fn new<T: Into<String>>(ssid: T) -> Self {
         Self {
             ssid: ssid.into(),
-            akm: vec![AkmType::None, ],
+            akm: vec![AkmType::None],
             ..Default::default()
         }
     }
@@ -103,6 +102,7 @@ impl Profile {
     }
 
     #[cfg(target_os = "windows")]
+    #[rustfmt::skip]
     pub fn to_xml(&self) -> String {
         let profile_name = &self.ssid;
         let ssid = &self.ssid;
@@ -165,7 +165,6 @@ r#"<?xml version="1.0"?>
     }
 }
 
-
 #[cfg(target_os = "windows")]
 #[cfg(test)]
 mod tests {
@@ -174,6 +173,7 @@ mod tests {
     use super::Profile;
 
     #[test]
+    #[rustfmt::skip]
     fn test_to_xml() {
         let expect =
 r#"<?xml version="1.0"?>

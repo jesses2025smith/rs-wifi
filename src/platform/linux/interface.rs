@@ -1,9 +1,12 @@
-use std::{collections::HashSet, os::fd::AsRawFd as _, sync::Arc, path::PathBuf};
 use getset::Getters;
 use nix::sys::socket;
+use std::{collections::HashSet, os::fd::AsRawFd as _, path::PathBuf, sync::Arc};
 
-use crate::{error::Error, AkmType, CipherType, IFaceStatus, platform::WiFiInterface, profile::Profile, Result};
-use super::{util, Handle, socket_file};
+use super::{Handle, socket_file, util};
+use crate::{
+    AkmType, CipherType, IFaceStatus, Result, error::Error, platform::WiFiInterface,
+    profile::Profile,
+};
 
 const CTRL_IFACE_RETRY: usize = 3;
 const REPLY_SIZE: usize = 4096;
@@ -20,8 +23,11 @@ unsafe impl Send for Interface {}
 
 impl Interface {
     pub(crate) fn new(ctrl_iface: PathBuf) -> Result<Option<Self>> {
-        let iface = ctrl_iface.file_name()
-            .ok_or(Error::Other(format!("{:?} is no filename", ctrl_iface).into()))?
+        let iface = ctrl_iface
+            .file_name()
+            .ok_or(Error::Other(
+                format!("{:?} is no filename", ctrl_iface).into(),
+            ))?
             .to_os_string()
             .into_string()
             .map_err(Into::<Error>::into)?;
@@ -31,18 +37,15 @@ impl Interface {
         let sock = socket::socket(
             socket::AddressFamily::Unix,
             socket::SockType::Datagram,
-            socket::SockFlag::empty(), None
+            socket::SockFlag::empty(),
+            None,
         )
-            .map_err(Into::<Error>::into)?
-            .as_raw_fd();
-        let addr = socket::UnixAddr::new(sock_file.as_str())
-            .map_err(Into::<Error>::into)?;
-        socket::bind(sock, &addr)
-            .map_err(Into::<Error>::into)?;
-        let addr = socket::UnixAddr::new(ctrl_iface.as_path())
-            .map_err(Into::<Error>::into)?;
-        socket::connect(sock, &addr)
-            .map_err(Into::<Error>::into)?;
+        .map_err(Into::<Error>::into)?
+        .as_raw_fd();
+        let addr = socket::UnixAddr::new(sock_file.as_str()).map_err(Into::<Error>::into)?;
+        socket::bind(sock, &addr).map_err(Into::<Error>::into)?;
+        let addr = socket::UnixAddr::new(ctrl_iface.as_path()).map_err(Into::<Error>::into)?;
+        socket::connect(sock, &addr).map_err(Into::<Error>::into)?;
 
         let len = socket::send(sock, "PING".as_bytes(), socket::MsgFlags::empty())
             .map_err(Into::<Error>::into)?;
@@ -53,17 +56,14 @@ impl Interface {
                 .map_err(Into::<Error>::into)?;
             if reply == 0 {
                 rsutil::error!("Connection to {} is broken!", iface);
-                break
+                break;
             }
 
             if String::from_utf8_lossy(&buffer[..reply]).starts_with("PONG") {
                 rsutil::info!("Connection to socket {} successfully!", iface);
                 return Ok(Some(Self {
                     name: iface.clone(),
-                    handle: Arc::new(Handle {
-                        iface,
-                        fd: sock,
-                    }),
+                    handle: Arc::new(Handle { iface, fd: sock }),
                 }));
             }
         }
@@ -78,7 +78,9 @@ impl Interface {
             rsutil::debug!("Sending command: {} to wpa_s: {}", cmd, len);
         }
         if len == 0 {
-            return Err(Error::Other(format!("Failed to send command: {}", cmd).into()));
+            return Err(Error::Other(
+                format!("Failed to send command: {}", cmd).into(),
+            ));
         }
 
         let mut buffer = [0u8; REPLY_SIZE];
@@ -104,20 +106,19 @@ impl WiFiInterface for Interface {
     }
 
     fn scan_results(&self) -> Result<HashSet<Profile>> {
-        let reply = self._send_cmd_to_wpas("SCAN_RESULTS", true)?
-            .unwrap();
+        let reply = self._send_cmd_to_wpas("SCAN_RESULTS", true)?.unwrap();
 
-        Ok(reply.lines()
+        Ok(reply
+            .lines()
             .skip(1)
             .filter_map(|line| {
                 let mut parts = line.split_whitespace();
                 let bssid = parts.next()?;
-                let _ = parts.next()?;  // frequency
-                let _ = parts.next()?;  // rssi
+                let _ = parts.next()?; // frequency
+                let _ = parts.next()?; // rssi
                 let akm = parts.next()?;
                 let ssid = parts.next()?;
-                let mut profile = Profile::new(ssid)
-                    .with_bssid(Some(bssid.into()));
+                let mut profile = Profile::new(ssid).with_bssid(Some(bssid.into()));
                 if akm.contains("WPA-PSK") {
                     profile.add_akm(AkmType::WpaPsk);
                 }
@@ -139,15 +140,14 @@ impl WiFiInterface for Interface {
     fn connect(&self, ssid: &str) -> Result<bool> {
         rsutil::debug!("Connecting to network: {}", ssid);
         let mut flag = false;
-        for (i, s) in self.network_profile_name_list()?
-            .iter()
-            .enumerate() {
+        for (i, s) in self.network_profile_name_list()?.iter().enumerate() {
             if ssid == s {
-                let reply = self._send_cmd_to_wpas(&format!("SELECT_NETWORK {}", i), true)?.unwrap();
+                let reply = self
+                    ._send_cmd_to_wpas(&format!("SELECT_NETWORK {}", i), true)?
+                    .unwrap();
                 if reply.to_lowercase() != "OK" {
                     rsutil::error!("Failed({}) to connect to network: {}", reply, ssid);
-                }
-                else {
+                } else {
                     rsutil::info!("Connected to network: {}", ssid);
                     flag = true;
                 }
@@ -167,24 +167,28 @@ impl WiFiInterface for Interface {
         let reply = self._send_cmd_to_wpas("ADD_NETWORK", true)?.unwrap();
         let id = reply.trim();
 
-        let _ = self._send_cmd_to_wpas(&format!("SET_NETWORK {} ssid \"{}\"", id, profile.ssid()), false)?;
-        let akm: &AkmType = profile.akm()
-            .last()
-            .unwrap_or(&AkmType::None);
+        let _ = self._send_cmd_to_wpas(
+            &format!("SET_NETWORK {} ssid \"{}\"", id, profile.ssid()),
+            false,
+        )?;
+        let akm: &AkmType = profile.akm().last().unwrap_or(&AkmType::None);
         let key_mgmt = akm.key_mgmt();
         if !key_mgmt.is_empty() {
-            let _ = self._send_cmd_to_wpas(&format!("SET_NETWORK {} key_mgmt {}", id, key_mgmt), false)?;
+            let _ = self
+                ._send_cmd_to_wpas(&format!("SET_NETWORK {} key_mgmt {}", id, key_mgmt), false)?;
         }
         let proto = akm.proto();
         if !proto.is_empty() {
-            let _ = self._send_cmd_to_wpas(&format!("SET_NETWORK {} proto {}", id, proto), false)?;
+            let _ =
+                self._send_cmd_to_wpas(&format!("SET_NETWORK {} proto {}", id, proto), false)?;
         }
         if akm.key_required() {
             let key = match profile.key() {
                 Some(v) => v,
                 None => &String::default(),
             };
-            let _ = self._send_cmd_to_wpas(&format!("SET_NETWORK {} psk \"{}\"", id, key), false)?;
+            let _ =
+                self._send_cmd_to_wpas(&format!("SET_NETWORK {} psk \"{}\"", id, key), false)?;
         }
 
         Ok(())
@@ -192,12 +196,11 @@ impl WiFiInterface for Interface {
 
     fn network_profile_name_list(&self) -> Result<Vec<String>> {
         let reply = self._send_cmd_to_wpas("LIST_NETWORKS", true)?.unwrap();
-        Ok(reply.lines()
+        Ok(reply
+            .lines()
             .skip(1)
             .filter_map(|line| {
-                let ssid = line.split_whitespace()
-                    .skip(1)
-                    .nth(1)?;
+                let ssid = line.split_whitespace().skip(1).nth(1)?;
                 Some(ssid.into())
             })
             .collect())
@@ -208,13 +211,19 @@ impl WiFiInterface for Interface {
 
         let mut results = vec![];
         for i in 0..len {
-            let ssid = self._send_cmd_to_wpas(&format!("GET_NETWORK {} ssid", i), true)?.unwrap();
-            let key_mgmt = self._send_cmd_to_wpas(&format!("GET_NETWORK {} key_mgmt", i), true)?.unwrap();
+            let ssid = self
+                ._send_cmd_to_wpas(&format!("GET_NETWORK {} ssid", i), true)?
+                .unwrap();
+            let key_mgmt = self
+                ._send_cmd_to_wpas(&format!("GET_NETWORK {} key_mgmt", i), true)?
+                .unwrap();
             let key_mgmt = key_mgmt.to_uppercase();
             if key_mgmt.contains("FAIL") {
                 continue;
             }
-            let ciphers = self._send_cmd_to_wpas(&format!("GET_NETWORK {} pairwise", i), true)?.unwrap();
+            let ciphers = self
+                ._send_cmd_to_wpas(&format!("GET_NETWORK {} pairwise", i), true)?
+                .unwrap();
             let ciphers = ciphers.to_uppercase();
             if ciphers.contains("FAIL") {
                 continue;
@@ -222,20 +231,21 @@ impl WiFiInterface for Interface {
             let mut profile = Profile::new(ssid.trim());
             profile.id = i;
             if key_mgmt.contains("WPA-PSK") {
-                let rep =   self._send_cmd_to_wpas(&format!("GET_NETWORK {} proto", i), true)?.unwrap();
+                let rep = self
+                    ._send_cmd_to_wpas(&format!("GET_NETWORK {} proto", i), true)?
+                    .unwrap();
                 if rep.to_uppercase() == "RSN" {
                     profile.add_akm(AkmType::Wpa2Psk);
-                }
-                else {
+                } else {
                     profile.add_akm(AkmType::WpaPsk);
                 }
-            }
-            else if key_mgmt.contains("WPA-EAP") {
-                let rep =   self._send_cmd_to_wpas(&format!("GET_NETWORK {} proto", i), true)?.unwrap();
+            } else if key_mgmt.contains("WPA-EAP") {
+                let rep = self
+                    ._send_cmd_to_wpas(&format!("GET_NETWORK {} proto", i), true)?
+                    .unwrap();
                 if rep.to_uppercase() == "RSN" {
                     profile.add_akm(AkmType::Wpa2);
-                }
-                else {
+                } else {
                     profile.add_akm(AkmType::Wpa);
                 }
             }
@@ -287,7 +297,9 @@ impl WiFiInterface for Interface {
         let mut status = IFaceStatus::Unknown;
         for line in reply.lines() {
             if line.starts_with("wpa_state=") {
-                status = line.split('=').nth(1)
+                status = line
+                    .split('=')
+                    .nth(1)
                     .ok_or(Error::Other("Failed to parse wpa_state".into()))?
                     .to_lowercase()
                     .into();
@@ -301,14 +313,13 @@ impl WiFiInterface for Interface {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-    use crate::WiFiInterface;
     use super::Interface;
+    use crate::WiFiInterface;
+    use std::path::PathBuf;
 
     #[test]
     fn test_new() -> anyhow::Result<()> {
-        let iface = Interface::new(PathBuf::from("/var/run/wpa_supplicant/wlp11s0"))?
-            .unwrap();
+        let iface = Interface::new(PathBuf::from("/var/run/wpa_supplicant/wlp11s0"))?.unwrap();
         let result = iface.scan_results()?;
         println!("result: {:?}", result);
         iface.connect("TestSSID")?;
@@ -316,5 +327,3 @@ mod tests {
         Ok(())
     }
 }
-
-

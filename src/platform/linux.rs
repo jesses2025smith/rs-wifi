@@ -3,9 +3,9 @@ mod util;
 
 pub use interface::Interface;
 
+use crate::{Result, error::Error};
 use nix::{sys::stat, unistd::close};
-use std::{path::PathBuf, os::unix::io::RawFd};
-use crate::{error::Error, Result};
+use std::{os::unix::io::RawFd, path::PathBuf};
 
 const CTRL_IFACE_DIR: &str = "/var/run/wpa_supplicant";
 
@@ -45,21 +45,17 @@ impl WifiUtil {
     pub fn new() -> Result<Self> {
         let mut root = PathBuf::new();
         root.set_file_name(CTRL_IFACE_DIR);
-        Ok(Self {
-            root,
-        })
+        Ok(Self { root })
     }
 
     pub fn interfaces(&self) -> Result<Vec<Interface>> {
         let mut results = vec![];
-        for entry in std::fs::read_dir(self.root.as_path())
-            .map_err(Into::<Error>::into)? {
-            let ctrl_iface = entry.map_err(Into::<Error>::into)?
-                .path();
+        for entry in std::fs::read_dir(self.root.as_path()).map_err(Into::<Error>::into)? {
+            let ctrl_iface = entry.map_err(Into::<Error>::into)?.path();
 
             let mode = stat::stat(&ctrl_iface)
-                    .map_err(Into::<Error>::into)?
-                    .st_mode;
+                .map_err(Into::<Error>::into)?
+                .st_mode;
             if stat::SFlag::from_bits_truncate(mode).contains(util::S_IFSOCK) {
                 if let Some(iface) = Interface::new(ctrl_iface)? {
                     results.push(iface);
@@ -70,4 +66,3 @@ impl WifiUtil {
         Ok(results)
     }
 }
-

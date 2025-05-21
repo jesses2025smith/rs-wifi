@@ -3,18 +3,16 @@ mod util;
 
 pub use interface::Interface;
 
+use crate::Result;
 use std::sync::Arc;
 use windows::Win32::{Foundation::HANDLE, NetworkManagement::WiFi::*};
-use crate::Result;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Handle(HANDLE);
 
 impl Drop for Handle {
     fn drop(&mut self) {
-        let ret = unsafe {
-            WlanCloseHandle(self.0, None)
-        };
+        let ret = unsafe { WlanCloseHandle(self.0, None) };
 
         if let Err(e) = util::fix_error(ret) {
             rsutil::warn!("Failed to close handle: {}", e);
@@ -36,7 +34,8 @@ impl WifiUtil {
         let mut nego_ver = 0;
         let mut handle = HANDLE::default();
 
-        let ret = unsafe { WlanOpenHandle(util::wlan_api_ver()?, None, &mut nego_ver, &mut handle) };
+        let ret =
+            unsafe { WlanOpenHandle(util::wlan_api_ver()?, None, &mut nego_ver, &mut handle) };
         util::fix_error(ret)?;
         let handle = Arc::new(Handle(handle));
 
@@ -48,12 +47,11 @@ impl WifiUtil {
 
     pub fn interfaces(&self) -> Result<Vec<Interface>> {
         let mut p_ifaces: *mut WLAN_INTERFACE_INFO_LIST = std::ptr::null_mut();
-        let ret = unsafe { WlanEnumInterfaces(self.handle.0.to_owned(), None, &mut p_ifaces) };
-        util::fix_error(ret)
-            .map_err(|e| {
-                unsafe { WlanFreeMemory(p_ifaces as _) };
-                e
-            })?;
+        let ret = unsafe { WlanEnumInterfaces(self.handle.0, None, &mut p_ifaces) };
+        util::fix_error(ret).map_err(|e| {
+            unsafe { WlanFreeMemory(p_ifaces as _) };
+            e
+        })?;
 
         if p_ifaces.is_null() {
             return Ok(Default::default());
@@ -61,22 +59,19 @@ impl WifiUtil {
 
         let deref = unsafe { &*p_ifaces };
         let ifaces = unsafe {
-            std::slice::from_raw_parts(
-                &deref.InterfaceInfo[0],
-                deref.dwNumberOfItems as _,
-            )
+            std::slice::from_raw_parts(&deref.InterfaceInfo[0], deref.dwNumberOfItems as _)
         }
-            .iter()
-            .map(|v| {
-                let name = util::width_slice_to_str(&v.strInterfaceDescription);
-                let guid = v.InterfaceGuid;
-                Interface {
-                    name,
-                    handle: self.handle.clone(),
-                    guid,
-                }
-            })
-            .collect::<Vec<_>>();
+        .iter()
+        .map(|v| {
+            let name = util::width_slice_to_str(&v.strInterfaceDescription);
+            let guid = v.InterfaceGuid;
+            Interface {
+                name,
+                handle: self.handle.clone(),
+                guid,
+            }
+        })
+        .collect::<Vec<_>>();
 
         unsafe { WlanFreeMemory(p_ifaces as _) };
 
@@ -84,17 +79,17 @@ impl WifiUtil {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{error::Error, AkmType, AuthAlg, CipherType, IFaceStatus, Profile, WiFiInterface as _};
+    use crate::{
+        AkmType, AuthAlg, CipherType, IFaceStatus, Profile, WiFiInterface as _, error::Error,
+    };
 
     fn initialize() -> anyhow::Result<Interface> {
         let util = WifiUtil::new()?;
         let iface = util.interfaces()?;
-        let iface = iface.first()
-            .ok_or(Error::Other("No iface found".into()))?;
+        let iface = iface.first().ok_or(Error::Other("No iface found".into()))?;
 
         Ok(iface.clone())
     }
@@ -152,7 +147,8 @@ mod tests {
     fn test_profile_list() -> anyhow::Result<()> {
         let iface = initialize()?;
 
-        iface.network_profile_name_list()?
+        iface
+            .network_profile_name_list()?
             .iter()
             .enumerate()
             .for_each(|(i, profile)| {

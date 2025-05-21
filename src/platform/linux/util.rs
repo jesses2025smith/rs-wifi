@@ -1,17 +1,13 @@
-use nix::sys::stat;
 use crate::*;
+use nix::sys::stat;
 
 pub(crate) const S_IFSOCK: stat::SFlag = stat::SFlag::S_IFSOCK;
 
 pub(crate) fn remove_file(name: &str) -> Result<()> {
-    if std::fs::exists(name)
-        .map_err(Into::<Error>::into)? {
-        let mode = stat::stat(name)
-            .map_err(Into::<Error>::into)?
-            .st_mode;
+    if std::fs::exists(name).map_err(Into::<Error>::into)? {
+        let mode = stat::stat(name).map_err(Into::<Error>::into)?.st_mode;
         if stat::SFlag::from_bits_truncate(mode).contains(S_IFSOCK) {
-            std::fs::remove_file(name)
-                .map_err(Into::<Error>::into)?;
+            std::fs::remove_file(name).map_err(Into::<Error>::into)?;
         }
     }
 
@@ -70,4 +66,3 @@ impl AkmType {
         matches!(self, Self::WpaPsk | Self::Wpa2Psk)
     }
 }
-

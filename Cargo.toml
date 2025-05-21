@@ -19,15 +19,16 @@ path = "src/lib.rs"
 getset = "0.1"
 lazy_static = "1"
 log = "0.4"
-thiserror = "2"
 rsutil = { version = "0.1", features = ["log"] }
+thiserror = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 regex = "1"
-windows = { version = "0.61", features = ["Win32_NetworkManagement_WiFi", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation"] }
+windows = { version = "0.61", features = ["Devices_WiFiDirect", "Security_Credentials", "Win32_NetworkManagement_WiFi", "Win32_NetworkManagement_Ndis", "Win32_System_SystemInformation"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { version = "0.30", features = ["fs", "socket"] }
 
 [dev-dependencies]
 anyhow = "1"
+tokio = { version = "1", features = ["full"] }

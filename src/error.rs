@@ -1,4 +1,3 @@
-
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("IO error: {0:?}")]
@@ -31,7 +30,6 @@ impl From<std::ffi::OsString> for Error {
         Self::OsError(format!("{:?}", s))
     }
 }
-
 
 #[cfg(target_os = "windows")]
 impl From<windows::core::Error> for Error {

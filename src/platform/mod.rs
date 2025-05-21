@@ -11,8 +11,8 @@ mod osx;
 #[cfg(target_os = "macos")]
 pub use osx::*;
 
-use std::collections::HashSet;
 use crate::{IFaceStatus, Profile, Result};
+use std::collections::HashSet;
 
 pub trait WiFiInterface {
     fn scan(&self) -> Result<()>;
